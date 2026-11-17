@@ -1,0 +1,41 @@
+[
+  {
+    "_id": "PROFILE-ALEX",
+    "displayName": "Alex Sample",
+    "email": "alex@example.test",
+    "preferences": ["quiet room", "late checkout"],
+    "rewards": {
+      "programName": "Juniper Rewards (demo)",
+      "tier": "Gold (demo)",
+      "pointsBalance": 12400,
+      "upgradeAwardsAvailable": 1
+    },
+    "demo": true
+  },
+  {
+    "_id": "PROFILE-MORGAN",
+    "displayName": "Morgan Sample",
+    "email": "morgan@example.test",
+    "preferences": ["fitness center", "higher floor"],
+    "rewards": {
+      "programName": "Juniper Rewards (demo)",
+      "tier": "Silver (demo)",
+      "pointsBalance": 6800,
+      "upgradeAwardsAvailable": 0
+    },
+    "demo": true
+  },
+  {
+    "_id": "PROFILE-RILEY",
+    "displayName": "Riley Sample",
+    "email": "riley@example.test",
+    "preferences": ["suite space", "breakfast"],
+    "rewards": {
+      "programName": "Juniper Rewards (demo)",
+      "tier": "Platinum (demo)",
+      "pointsBalance": 24750,
+      "upgradeAwardsAvailable": 2
+    },
+    "demo": true
+  }
+]
