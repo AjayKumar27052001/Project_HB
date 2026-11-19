@@ -1,9 +1,6 @@
 import "server-only";
 
-import { searchAssistantProperties } from "@/server/repositories/assistant-properties";
-import { getAssistantPropertyDetails } from "@/server/repositories/assistant-properties";
-import { getMongoPropertyRates, findMongoBookingSelection } from "@/server/repositories/property-rates";
-import { getStayNightCount } from "@/server/pricing/rate-quote";
+import { callInternalApiPost, callInternalApiGet } from "./internal-api-client";
 import type { AssistantTurnRequest, CapabilityName, Plan } from "./types";
 import type { SearchCriteria } from "@/shared/types";
 
@@ -154,9 +151,10 @@ export function validatePlan(plan: Plan, request: AssistantTurnRequest): Plan {
       ...plan,
       arguments: {
         propertyId,
-        attributes: Array.isArray(plan.arguments.attributes) && plan.arguments.attributes.length > 0
-          ? plan.arguments.attributes
-          : ["property.amenities", "policies.checkIn", "policies.checkOut", "policies.cancellation"],
+        attributes:
+          Array.isArray(plan.arguments.attributes) && plan.arguments.attributes.length > 0
+            ? plan.arguments.attributes
+            : ["property.amenities", "policies.checkIn", "policies.checkOut", "policies.cancellation"],
       },
     };
   }
@@ -199,8 +197,9 @@ export function validatePlan(plan: Plan, request: AssistantTurnRequest): Plan {
 }
 
 /**
- * Direct In-Memory Tool Execution
- * Invokes existing repositories without any HTTP network loopback.
+ * Decoupled Tool Execution (V3.5)
+ * Calls internal REST APIs instead of importing backend repositories directly.
+ * Allows effortless swap to Java or remote backend by changing INTERNAL_API_BASE_URL.
  */
 export async function executeCapability(plan: Plan, request: AssistantTurnRequest): Promise<unknown> {
   const { capability, arguments: args } = plan;
@@ -219,7 +218,17 @@ export async function executeCapability(plan: Plan, request: AssistantTurnReques
     case "searchProperties": {
       const criteria = args.criteria as SearchCriteria;
       const filters = Array.isArray(args.filters) ? args.filters : [];
-      const result = await searchAssistantProperties({
+      const response = await callInternalApiPost<{
+        criteria: unknown;
+        appliedFilters: unknown[];
+        sort: unknown;
+        totalMatches: number;
+        evaluatedAllMatches: boolean;
+        unknownMatchCount: number;
+        currencyComparison: unknown;
+        matches: unknown[];
+        page: unknown;
+      }>("/internal/v1/assistant/properties/search", {
         criteria,
         filters,
         sort: null,
@@ -228,56 +237,64 @@ export async function executeCapability(plan: Plan, request: AssistantTurnReques
       });
 
       return {
-        status: "complete",
-        data: result,
+        status: response.status ?? "complete",
+        data: response.data,
       };
     }
 
     case "getPropertyDetails": {
       const propertyId = String(args.propertyId);
       const attributes = Array.isArray(args.attributes) ? (args.attributes as string[]) : [];
-      const criteria = request.pageContext.searchCriteria ?? {
-        destination: "New York",
-        checkIn: "2026-12-01",
-        checkOut: "2026-12-04",
-        adults: 2,
-        rooms: 1,
+      const criteria: SearchCriteria = {
+        destination: request.pageContext.searchCriteria?.destination || "Irving",
+        checkIn: request.pageContext.searchCriteria?.checkIn || "2026-12-01",
+        checkOut: request.pageContext.searchCriteria?.checkOut || "2026-12-04",
+        adults: request.pageContext.searchCriteria?.adults || 2,
+        rooms: request.pageContext.searchCriteria?.rooms || 1,
       };
 
-      const result = await getAssistantPropertyDetails(
-        request.page === "search-results" ? "search-results" : "rate-list",
-        [propertyId],
+      const response = await callInternalApiPost("/internal/v1/assistant/properties/details", {
+        page: request.page === "search-results" ? "search-results" : "rate-list",
+        propertyIds: [propertyId],
         criteria,
         attributes,
-      );
+      });
 
       return {
-        status: result.status,
-        data: result,
+        status: response.status ?? "complete",
+        data: response.data,
       };
     }
 
     case "getRoomRates": {
       const propertyId = String(args.propertyId);
       const criteria = args.criteria as SearchCriteria;
-      const result = await getMongoPropertyRates(propertyId, {
-        checkIn: criteria.checkIn,
-        checkOut: criteria.checkOut,
-        adults: criteria.adults,
-        rooms: criteria.rooms,
-      });
 
-      if (!result) {
+      try {
+        const response = await callInternalApiGet(
+          `/internal/v1/assistant/properties/${encodeURIComponent(propertyId)}/rates`,
+          {
+            checkIn: criteria.checkIn,
+            checkOut: criteria.checkOut,
+            adults: criteria.adults,
+            rooms: criteria.rooms,
+          },
+        );
+
         return {
-          status: "not_found",
-          data: { error: `Property ${propertyId} not found` },
+          status: response.status ?? "complete",
+          data: response.data,
         };
+      } catch (error: unknown) {
+        const err = error as { status?: number; code?: string };
+        if (err?.status === 404 || err?.code === "NOT_FOUND") {
+          return {
+            status: "not_found",
+            data: { error: `Property ${propertyId} not found` },
+          };
+        }
+        throw error;
       }
-
-      return {
-        status: "complete",
-        data: result,
-      };
     }
 
     case "getCheckoutSummary": {
@@ -286,39 +303,33 @@ export async function executeCapability(plan: Plan, request: AssistantTurnReques
       const rateId = String(args.rateId);
       const criteria = args.criteria as SearchCriteria;
 
-      const selection = await findMongoBookingSelection(propertyId, roomId, rateId, {
-        checkIn: criteria.checkIn,
-        checkOut: criteria.checkOut,
-        adults: criteria.adults,
-        rooms: criteria.rooms,
-      });
-
-      if (!selection) {
-        return {
-          status: "not_found",
-          data: { error: "Selection not found" },
-        };
-      }
-
-      const nights = getStayNightCount(criteria.checkIn, criteria.checkOut);
-      return {
-        status: "complete",
-        data: {
-          property: selection.property,
-          room: { id: selection.room.id, name: selection.room.name },
-          rate: {
-            id: selection.rate.id,
-            name: selection.rate.name,
-            subtotal: selection.rate.subtotal,
-            taxesAndFees: selection.rate.taxesAndFees,
-            total: selection.rate.total,
-            cancellationSummary: selection.rate.cancellationSummary,
-            cancellationDeadline: selection.rate.cancellationDeadline,
-            paymentSummary: selection.rate.paymentSummary,
+      try {
+        const response = await callInternalApiPost("/internal/v1/assistant/checkout-summary", {
+          propertyId,
+          roomId,
+          rateId,
+          criteria: {
+            checkIn: criteria.checkIn,
+            checkOut: criteria.checkOut,
+            adults: criteria.adults,
+            rooms: criteria.rooms,
           },
-          nights,
-        },
-      };
+        });
+
+        return {
+          status: response.status ?? "complete",
+          data: response.data,
+        };
+      } catch (error: unknown) {
+        const err = error as { status?: number; code?: string };
+        if (err?.status === 404 || err?.code === "NOT_FOUND") {
+          return {
+            status: "not_found",
+            data: { error: "Selection not found" },
+          };
+        }
+        throw error;
+      }
     }
 
     default:

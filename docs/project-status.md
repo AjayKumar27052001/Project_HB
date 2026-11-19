@@ -1,106 +1,61 @@
-# Project Status Board (Jira-Equivalent Dashboard)
+# Project Status — dreRuss Hotels AI Assistant
 
-**Project:** dreRuss Hotels Booking Assistant  
-**Epic:** V3 Unified LangGraph Assistant Integration  
-**Updated:** 2026-11-19  
-**Board Phase:** V3 Sprint Planning & Execution  
+## V3.5 — AI Layer Decoupled to Internal REST API (COMPLETE ✅)
 
----
+### Jira Board
 
-## 1. Executive Board Summary
-
-```
-========================================================================================
-  TOTAL STORIES: 43   |   DONE: 43 (V1, V2, V3 COMPLETE)   |   V3 SPRINT: 0 STORIES REMAINING
-========================================================================================
-  [████████████████████████████████████████████] 100% V3 Milestone Complete 🎉
-========================================================================================
-```
-
-### Story Lifecycle Statuses
-1. 📋 **Planning:** Acceptance criteria, scope, and technical design approved.
-2. 💻 **Development (In Progress):** Code implementation and local unit checks.
-3. 🔍 **In Review:** Code review for type safety, boundaries, and zero-hallucination compliance.
-4. 🧪 **Testing:** Automated runtime verification and live query tests against MongoDB.
-5. ✅ **Done:** Acceptance criteria met and verified.
+| Story ID | Title | Status | Priority |
+|---|---|---|---|
+| V3.5-01 | Create `internal-api-client.ts` HTTP helper | ✅ DONE | P0 |
+| V3.5-02 | Refactor `tools.ts` — replace direct calls with `callInternalApi()` | ✅ DONE | P0 |
+| V3.5-03 | Config + env var — add `INTERNAL_API_BASE_URL` | ✅ DONE | P1 |
+| V3.5-04 | Typecheck + build + live test all 4 pages | ✅ DONE | P0 |
 
 ---
 
-## 2. V3 Jira Sprint Board
+### Implementation Summary
 
-| Issue Key | Summary / Work Item | Priority | Status | Depends On | Deliverables |
-| :--- | :--- | :---: | :---: | :---: | :--- |
-| **V3-01** | LangGraph & Gemini Engine Setup | P0 | ✅ **DONE** | — | Package installation, Gemini client, StateGraph schema |
-| **V3-02** | Direct In-Memory Capability Tools | P0 | ✅ **DONE** | V3-01 | In-memory bindings to MongoDB repositories with response schemas |
-| **V3-03** | ReAct + Self-Reflection Loop | P0 | ✅ **DONE** | V3-02 | 5-node graph with 2-round cap, policy audit & markdown table generator |
-| **V3-04** | Route Handler & Drawer Integration | P0 | ✅ **DONE** | V3-03 | In-process `/api/v3/assistant/turn` wired to AssistantPanel |
-| **V3-05** | End-to-End Journey QA & Demo Sign-off | P0 | ✅ **DONE** | V3-04 | Verified 4-page journey tests (Search, RLM, Checkout, Home) with 200 OK |
+#### V3.5-01: `src/server/assistant/internal-api-client.ts` (Done)
+- Created reusable typed HTTP client helper using `fetch` with `cache: "no-store"`
+- Automatically applies `Authorization: Bearer ${AI_SERVICE_TOKEN}` header
+- Resolves against `INTERNAL_API_BASE_URL`
+- Exports `callInternalApiPost<T>()` and `callInternalApiGet<T>()` with structured error propagation
 
----
+#### V3.5-02: `src/server/assistant/tools.ts` (Done)
+- Removed all 4 repository function imports:
+  - `searchAssistantProperties`
+  - `getAssistantPropertyDetails`
+  - `getMongoPropertyRates`
+  - `findMongoBookingSelection`
+- Replaced tool execution cases with internal REST API endpoints:
+  - `searchProperties` → `POST /internal/v1/assistant/properties/search`
+  - `getPropertyDetails` → `POST /internal/v1/assistant/properties/details`
+  - `getRoomRates` → `GET /internal/v1/assistant/properties/{id}/rates?checkIn=...`
+  - `getCheckoutSummary` → `POST /internal/v1/assistant/checkout-summary`
+- Tool registry schema-awareness remains 100% intact.
 
-## 3. Story Specifications & Acceptance Criteria
+#### V3.5-03: `src/server/assistant/config.ts` & `.env.example` (Done)
+- Added `INTERNAL_API_BASE_URL` (default: `http://localhost:${PORT || 3000}`)
+- Added documentation in `.env.example` showing how to point to a remote Java or microservice backend
 
-### Story 1: V3-01 — LangGraph & Gemini Engine Setup
-* **Objective:** Install dependencies and create the core Gemini LLM client and LangGraph state annotation schema.
-* **Scope:**
-  * Install `@langchain/langgraph`, `@langchain/core`, `@google/genai` in `package.json`.
-  * Create `src/server/assistant/config.ts` loading `GEMINI_API_KEY` from `.env.local` using `gemini-1.5-flash`.
-  * Define `GraphState` in `src/server/assistant/types.ts`.
-* **Definition of Done (DoD):**
-  * `npm run typecheck` passes with zero errors.
-  * Gemini client successfully initializes and executes a simple test prompt.
-
----
-
-### Story 2: V3-02 — Direct In-Memory Capability Tools
-* **Objective:** Wrap existing MongoDB repositories into typed LangGraph tool functions without any HTTP loopbacks.
-* **Scope:**
-  * `src/server/assistant/tools.ts`:
-    * `searchProperties`: calls `searchAssistantProperties()`
-    * `getPropertyDetails`: calls `getAssistantPropertyDetails()`
-    * `getRoomRates`: calls `getMongoPropertyRates()`
-    * `getCheckoutSummary`: calls `quoteMongoPropertyRate()`
-* **Definition of Done (DoD):**
-  * Tools execute in-memory with zero network latency.
-  * Output matches the structured evidence format required by the UI drawer.
+#### V3.5-04: QA & Live Verification (Done)
+- `npm run typecheck` passed (0 errors)
+- `npm run build` passed (production build succeeded)
+- Live tests executed against all 4 pages:
+  - **Search Results Page:** `POST /internal/v1/assistant/properties/search` verified ✅
+  - **Rate List Menu (RLM) Page:** `GET /internal/v1/assistant/properties/{id}/rates` verified ✅
+  - **Checkout Page:** `POST /internal/v1/assistant/checkout-summary` verified ✅
+  - **Deep-Dive Fact Queries:** `POST /internal/v1/assistant/properties/details` verified ✅
+  - **Multi-Turn Greeting Guard:** First turn receives "Hey!", follow-up turn responds casually without greeting ✅
 
 ---
 
-### Story 3: V3-03 — ReAct + Self-Reflection Loop & Table Generator
-* **Objective:** Build the complete 5-node LangGraph state machine.
-* **Scope:**
-  * Implement `interpret` $\rightarrow$ `act` $\rightarrow$ `reflect` $\rightarrow$ `replan` $\rightarrow$ `synthesize`.
-  * Reflection logic: audits if the user requested cancellation policies or breakfast, and triggers Round 2 fetch if missing.
-  * Markdown generator: outputs clean comparison tables and bulleted recommendations.
-  * Hard limit of maximum 2 retrieval rounds.
-* **Definition of Done (DoD):**
-  * ReAct loop runs smoothly. Missing policy questions trigger self-reflection to fetch details before answering.
+## V3.0 — LangGraph ReAct + Self-Reflection (Committed `7045660`) ✅
 
----
-
-### Story 4: V3-04 — Route Handler & Drawer Integration
-* **Objective:** Wire `app/api/v3/assistant/turn/route.ts` to the orchestrator.
-* **Scope:**
-  * Validate request payload from `AssistantPanel`.
-  * Execute graph and return `{ answer: { text }, evidence, matches }`.
-* **Definition of Done (DoD):**
-  * The existing drawer opens, sends messages, and renders comparison tables and verified evidence cards across Home, Search, RLM, and Checkout.
-
----
-
-### Story 5: V3-05 — End-to-End Journey QA & Demo Verification
-* **Objective:** Validate live questions across all pages to guarantee quality for the demo.
-* **Test Scenarios:**
-  1. **Search Results:** *"Compare pet-friendly hotels with lowest nightly rate"* $\rightarrow$ Markdown table of hotels.
-  2. **RLM Page:** *"Compare Standard Saver vs Flexible rate and check if cancellation is free"* $\rightarrow$ Self-reflection fetches policy and shows cancellation rules.
-  3. **Checkout Page:** *"Explain the taxes, fees, and cancellation deadline"* $\rightarrow$ Accurate cost breakdown.
-  4. **Home Page:** Form help and boundary compliance.
-* **Definition of Done (DoD):**
-  * All 4 test queries return verified, accurate answers in < 2.5 seconds with zero console errors.
-
----
-
-## 4. Execution Workflow
-
-For each story in order:
-$$\text{Planning (Approved)} \longrightarrow \text{Development} \longrightarrow \text{Code Review} \longrightarrow \text{Testing (DoD)} \longrightarrow \text{Marked DONE}$$
+| Story | Title | Status |
+|---|---|---|
+| V3-01 | LangGraph & Gemini Engine Setup | ✅ DONE |
+| V3-02 | Direct In-Memory Capability Tools | ✅ DONE |
+| V3-03 | ReAct + Self-Reflection Loop | ✅ DONE |
+| V3-04 | Route Handler & Drawer Integration | ✅ DONE |
+| V3-05 | End-to-End QA | ✅ DONE |
