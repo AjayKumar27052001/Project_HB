@@ -49,7 +49,7 @@ export default async function ConfirmationPage({ params }: { params: PageParams 
         <div className="confirmation-icon" aria-hidden="true">✓</div>
         <span className="eyebrow">DEMO CONFIRMATION</span>
         <h1>Your demo stay is confirmed.</h1>
-        <p>This confirmation is a synthetic record created for the Juniper Hotels prototype.</p>
+        <p>This confirmation is a synthetic record created for the dreRuss Hotels prototype.</p>
         <div className="confirmation-code"><span>DEMO CONFIRMATION</span><strong>{booking.confirmationCode}</strong></div>
       </section>
 

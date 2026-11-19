@@ -15,7 +15,7 @@ export function PropertyCard({ property, criteria }: { property: Property; crite
   return (
     <article className="property-card">
       <div className={`property-photo ${property.imageClass}`} role="img" aria-label={`${property.name} exterior`}>
-        <span className="photo-label">JUNIPER HOTELS</span>
+        <span className="photo-label">dreRuss Hotels</span>
       </div>
       <div className="property-info">
         <div className="property-title-row">

@@ -1,6 +1,6 @@
 # Project Skills and Coding Guidelines
 
-These guidelines help the team build the Juniper Hotels booking flow in a way that is easy to read, review, and maintain. Prefer familiar patterns that a developer joining the project can understand without decoding clever shortcuts.
+These guidelines help the team build the dreRuss Hotels booking flow in a way that is easy to read, review, and maintain. Prefer familiar patterns that a developer joining the project can understand without decoding clever shortcuts.
 
 ## 1. Readability first
 
@@ -35,8 +35,14 @@ These guidelines help the team build the Juniper Hotels booking flow in a way th
 - Keep search, filters, hotel/rate selection, checkout, and booking submission in normal page controls.
 - Do not give the assistant tools or handlers that change booking state or submit forms.
 - Start a fresh assistant conversation after route changes. Send only the current page's relevant, synthetic context.
-- Use one server-side Gemini request per assistant turn as described in the system and API design documents. Do not add function calling or a paid fallback.
-- When information is missing or Gemini is unavailable, say so plainly; do not invent hotel facts, prices, benefits, or policies.
+- V1/V2 use the existing one-call assistant behavior. V3 replaces that design only after its PRD, system design, and API design pass review.
+- For V3, use a separate Node.js LangGraph orchestration service with Gemini and a fixed registry of approved, read-only HTTP capabilities. The service calls the booking backend; it never connects directly to MongoDB.
+- Limit V3 to two backend retrieval rounds per turn. Parallelize independent approved reads within a round. Never let a model construct arbitrary URLs, database queries, or tools.
+- Keep search submission, filters, property/rate selection, checkout submission, and booking actions in normal guest-controlled page controls. Do not register write capabilities in the graph.
+- Start a fresh assistant conversation after route changes. Send only the current page's relevant synthetic context. Do not send profile, contact, or payment details in V3.
+- Let deterministic backend services filter, sort, and calculate. Keep prices, policies, attributes, and booking facts in structured evidence rendered by the UI; generated prose only explains verified evidence.
+- Ask a focused clarification for materially ambiguous requests. Distinguish no match, unknown data, incomplete evidence, and service errors. Never present a provider failure as no availability.
+- When information is missing or Gemini is unavailable, say so plainly; do not invent hotel facts, prices, benefits, or policies. V3 uses no paid fallback, feedback learning, or persistent cross-page memory.
 
 ## 5. Keep the user journey and UI consistent
 
@@ -44,8 +50,8 @@ These guidelines help the team build the Juniper Hotels booking flow in a way th
 - Reuse shared layout and UI components while allowing each page to show its own content and fresh assistant conversation.
 - Keep shared colors, typography, spacing, radii, shadows, and focus colors in named CSS custom properties; use those tokens in reusable primitives instead of repeating raw values. One-off decorative values may stay local when they are not shared.
 - Keep dates, occupancy, selected property, room, rate, and selected synthetic demo profile consistent as the guest moves through the booking flow. Keep assistant transcript state separate from booking state.
-- Use only fictional demo profiles and clearly labeled Juniper demo rewards. The profile selector is not authentication; never use real customer or Marriott loyalty data.
-- Use the fictional Juniper Hotels visual direction and English-only content agreed for this project.
+- Use only fictional demo profiles and clearly labeled demo rewards. The profile selector is not authentication; never use real customer or Marriott loyalty data.
+- Use the fictional dreRuss Hotels visual direction and English-only content agreed for this project.
 - Keep all booking actions mock-only. A confirmation screen must not imply a real reservation, charge, or payment has occurred.
 
 ## 6. Update the project status tracker as work progresses
@@ -70,6 +76,8 @@ Complete one feature slice at a time in this order:
 3. **Review:** after development, ask a separate review agent to inspect the diff against the plan, readable-code rules, and project contracts. Resolve findings before proceeding.
 4. **Testing:** after review findings are resolved, ask a separate testing agent to run relevant checks and report evidence. Do not start the next feature slice until the current slice passes review and testing.
 5. **Status:** move stories through Development Done, In Review, Testing, and Done only when the corresponding evidence exists. If a gate finds an issue, return the affected story to In Progress and fix it before continuing.
+
+For V3, review `docs/prd-v3.md`, `docs/system-design-v3.md`, and `docs/api-design-v3.md` before marking V3-00 Done or moving V3-01 to In Progress. Implement V3-01 as its own slice, then follow the same development, independent review, and independent testing gates.
 
 ## 8. Definition of done for a feature
 

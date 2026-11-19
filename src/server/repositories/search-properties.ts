@@ -34,7 +34,7 @@ function normalizeDestination(destination: string): string {
     .trim();
 }
 
-function getSearchableCity(destination: string): string {
+export function getSearchableCity(destination: string): string {
   const normalized = normalizeDestination(destination);
   const cityAliases: Record<string, string> = {
     "new york ny": "new york",

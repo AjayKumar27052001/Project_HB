@@ -6,25 +6,26 @@ import { useDemoProfile } from "@/features/profiles/profile-context";
 import { useAssistantDrawer } from "@/features/assistant/assistant-drawer-context";
 
 type AssistantPage = "home" | "search-results" | "rate-list" | "checkout" | "confirmation";
-type ChatMessage = { role: "guest" | "concierge"; text: string };
+type ChatMessage = { role: "guest" | "concierge"; text: string; evidence?: unknown };
 type AssistantStatus = "idle" | "loading" | "error";
 type ConversationMessage = { role: "user" | "assistant"; text: string };
 type AssistantApiError = Error & { retryable: boolean };
 type AssistantTurnRequest = {
   pageSessionId: string;
   page: AssistantPage;
-  profileId: string;
   history: ConversationMessage[];
-  message: string;
+  message?: string;
+  continuationCursor?: string;
   pageContext: Record<string, unknown>;
 };
-type AssistantReplyProvider = (request: AssistantTurnRequest) => Promise<string>;
+type AssistantReply = { text: string; evidence?: unknown; matches?: unknown };
+type AssistantReplyProvider = (request: AssistantTurnRequest) => Promise<AssistantReply>;
 type ApiErrorResponse = { error?: { message?: string; retryable?: boolean } };
-type ApiReplyResponse = { reply?: { text?: string } };
+type ApiReplyResponse = { answer?: { text?: string } };
 
 const pageCopy: Record<AssistantPage, { welcome: string; prompts: string[] }> = {
   home: {
-    welcome: "Hi, I’m Juniper Concierge. I can explain the search options on this page.",
+    welcome: "Hi, I’m dreRuss Concierge. I can explain the search options on this page.",
     prompts: ["What dates should I enter?", "How many guests can I add?", "What can I ask you?"],
   },
   "search-results": {
@@ -40,8 +41,8 @@ const pageCopy: Record<AssistantPage, { welcome: string; prompts: string[] }> = 
     prompts: ["What is the cancellation deadline?", "How are taxes and fees shown?", "Is this a real booking?"],
   },
   confirmation: {
-    welcome: "I can explain the details displayed in this mock confirmation.",
-    prompts: ["What are the stay dates?", "What does the total include?", "Is this reservation real?"],
+    welcome: "The V3 concierge is available on Home, Search, Rates, and Checkout. Confirmation assistance is planned for a later release.",
+    prompts: [],
   },
 };
 
@@ -100,8 +101,76 @@ function createPageSessionId(): string {
   return `page-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-async function requestGeminiReply(request: AssistantTurnRequest): Promise<string> {
-  const response = await fetch("/api/v1/assistant/turn", {
+function renderFacts(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  return Object.entries(record)
+    .filter(([key]) => key !== "nextCursor" && key !== "continuationCursor")
+    .filter(([, item]) => item === null || ["string", "number", "boolean"].includes(typeof item))
+    .map(([key, item]) => `${key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}: ${String(item)}`);
+}
+
+function EvidenceDetails({ evidence }: { evidence: unknown }) {
+  const envelopes: Record<string, unknown>[] = [];
+  const nestedFacts: string[] = [];
+  const collectScalars = (value: unknown, prefix = "", depth = 0) => {
+    if (depth > 3 || value === null || value === undefined) return;
+    if (["string", "number", "boolean"].includes(typeof value)) {
+      if (prefix && !prefix.toLowerCase().includes("cursor")) nestedFacts.push(`${prefix}: ${String(value)}`);
+      return;
+    }
+    if (Array.isArray(value)) { value.forEach((item, index) => collectScalars(item, `${prefix}[${index + 1}]`, depth + 1)); return; }
+    if (typeof value === "object") Object.entries(value as Record<string, unknown>).forEach(([key, item]) => collectScalars(item, prefix ? `${prefix}.${key}` : key, depth + 1));
+  };
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.items)) record.items.forEach(visit);
+    if (Array.isArray(record.entities)) record.entities.forEach(visit);
+    if (Array.isArray(record.rounds)) record.rounds.forEach(visit);
+    if (record.data) visit(record.data);
+    if (record.entity && Array.isArray(record.facts)) envelopes.push(record);
+  };
+  visit(evidence);
+  collectScalars(evidence);
+  const matches = evidence && typeof evidence === "object" && "items" in evidence
+    ? (evidence as { items?: unknown }).items
+    : undefined;
+  const items = envelopes.length ? envelopes : Array.isArray(matches) ? matches : [];
+  const facts = renderFacts(evidence).concat(nestedFacts).slice(0, 40);
+  if (!items.length && !facts.length) return null;
+  return (
+    <details className="assistant-evidence">
+      <summary>Verified details</summary>
+      {items.length ? (
+        <ul className="assistant-match-list">
+          {items.map((item, index) => {
+            const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+            const entity = record.entity && typeof record.entity === "object" ? record.entity as Record<string, unknown> : record;
+            const name = typeof entity.name === "string" ? entity.name : typeof record.name === "string" ? record.name : `Match ${index + 1}`;
+            const rawFacts = Array.isArray(record.facts) ? record.facts : [];
+            const details = rawFacts.map((fact) => {
+              if (!fact || typeof fact !== "object") return String(fact);
+              const item = fact as Record<string, unknown>;
+              const label = typeof item.label === "string" ? item.label : typeof item.attribute === "string" ? item.attribute : "Fact";
+              const value = item.value === null || item.value === undefined ? "not confirmed" : String(item.value);
+              const qualifier = [item.unit, item.basis, item.scope].filter((part) => typeof part === "string").join(" ");
+              return `${label}: ${value}${qualifier ? ` (${qualifier})` : ""}`;
+            });
+            return <li key={`${name}-${index}`}><strong>{name}</strong>{details.length ? <span>{details.join(" · ")}</span> : null}</li>;
+          })}
+        </ul>
+      ) : <ul className="assistant-fact-list">{facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>}
+    </details>
+  );
+}
+
+async function requestGeminiReply(request: AssistantTurnRequest): Promise<AssistantReply> {
+  if (request.page === "confirmation") {
+    throw Object.assign(new Error("The V3 concierge is available on Home, Search, Rates, and Checkout."), { retryable: false });
+  }
+  const response = await fetch("/api/v3/assistant/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -116,13 +185,13 @@ async function requestGeminiReply(request: AssistantTurnRequest): Promise<string
   }
 
   const successBody = responseBody as ApiReplyResponse;
-  const replyText = successBody.reply?.text?.trim();
+  const replyText = successBody.answer?.text?.trim();
   if (!replyText) {
     const error = new Error("The assistant returned an empty reply. Please retry.") as AssistantApiError;
     error.retryable = true;
     throw error;
   }
-  return replyText;
+  return { text: replyText, evidence: (responseBody as { evidence?: unknown }).evidence, matches: (responseBody as { matches?: unknown }).matches };
 }
 
 export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyProvider?: AssistantReplyProvider } = {}) {
@@ -154,7 +223,7 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
 
   const pageDetails = pageCopy[page];
 
-  async function requestReply(text: string, previousMessages: ConversationMessage[]) {
+  async function requestReply(text: string, previousMessages: ConversationMessage[], continuationCursor?: string) {
     const requestId = activeRequestId.current + 1;
     activeRequestId.current = requestId;
     retryHistory.current = previousMessages;
@@ -168,15 +237,14 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
       const reply = await replyProvider({
         pageSessionId: pageSessionId.current,
         page,
-        profileId: selectedProfile.id,
         history: previousMessages.slice(-12),
-        message: text,
+        ...(continuationCursor ? { continuationCursor } : { message: text }),
         pageContext: buildCurrentPageContext(page),
       });
 
       if (activeRequestId.current !== requestId) return;
 
-      setMessages((current) => [...current, { role: "concierge", text: reply }]);
+      setMessages((current) => [...current, { role: "concierge", text: reply.text, evidence: reply.matches ?? reply.evidence }]);
       retryHistory.current = [];
       setRetryQuestion("");
       setStatus("idle");
@@ -207,24 +275,25 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
   }
 
   return (
-    <aside id="assistant-help" className="assistant-panel" aria-label="Juniper Concierge">
+    <aside id="assistant-help" className="assistant-panel" aria-label="dreRuss Concierge">
       <div className="assistant-heading">
-        <div className="assistant-avatar" aria-hidden="true">J</div>
+        <div className="assistant-avatar" aria-hidden="true">D</div>
         <div>
-          <strong>Juniper Concierge</strong>
+          <strong>dreRuss Concierge</strong>
           <span><i aria-hidden="true" /> Online · read-only</span>
         </div>
         <span className="assistant-sparkle" aria-hidden="true">✳</span>
-        <button className="assistant-close" type="button" aria-label="Close Juniper Concierge" onClick={closeDrawer}>×</button>
+        <button className="assistant-close" type="button" aria-label="Close dreRuss Concierge" onClick={closeDrawer}>×</button>
       </div>
       <div className="assistant-body" aria-live="polite" aria-busy={status === "loading"}>
         <p className="assistant-welcome">{pageDetails.welcome}</p>
         {messages.map((message, index) => (
-          <p className={`chat-message chat-${message.role}`} key={`${message.role}-${index}`}>
-            {message.text}
-          </p>
+          <div key={`${message.role}-${index}`}>
+            <p className={`chat-message chat-${message.role}`}>{message.text}</p>
+            {message.role === "concierge" && message.evidence ? <EvidenceDetails evidence={message.evidence} /> : null}
+          </div>
         ))}
-        {status === "loading" ? <p className="assistant-loading" role="status">Juniper Concierge is thinking…</p> : null}
+        {status === "loading" ? <p className="assistant-loading" role="status">dreRuss Concierge is thinking…</p> : null}
         {status === "error" ? (
           <div className="assistant-error" role="alert">
             <p>{statusMessage || "That reply didn’t come through."}</p>
@@ -237,6 +306,17 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
         ) : null}
         <p className="assistant-demo-note">Use fictional demo details only; don’t enter real personal or booking information. The concierge cannot change your booking.</p>
       </div>
+      {(() => {
+        const latest = [...messages].reverse().find((message) => message.role === "concierge" && message.evidence);
+        const latestEvidence = latest?.evidence as { complete?: boolean; nextCursor?: string } | undefined;
+        return latestEvidence?.complete === false && typeof latestEvidence.nextCursor === "string";
+      })() ? (
+        <button className="assistant-more" type="button" onClick={() => {
+          const latest = [...messages].reverse().find((message) => message.role === "concierge" && message.evidence) ?? null;
+          const matches = latest?.evidence as { nextCursor?: string } | undefined;
+          if (matches?.nextCursor) void requestReply("", [], matches.nextCursor);
+        }}>Show more matches</button>
+      ) : null}
       <div className="suggested-questions">
         <span className="eyebrow">SUGGESTED QUESTIONS</span>
         {pageDetails.prompts.map((prompt) => (
@@ -246,15 +326,15 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
         ))}
       </div>
       <form className="assistant-input" onSubmit={handleSubmit}>
-        <label className="sr-only" htmlFor="assistant-question">Ask Juniper Concierge</label>
+        <label className="sr-only" htmlFor="assistant-question">Ask dreRuss Concierge</label>
         <input
           id="assistant-question"
           value={question}
-          disabled={status === "loading"}
+          disabled={status === "loading" || page === "confirmation"}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask a question about this page"
         />
-        <button type="submit" aria-label="Send question" disabled={!question.trim() || status === "loading"}>↑</button>
+        <button type="submit" aria-label="Send question" disabled={!question.trim() || status === "loading" || page === "confirmation"}>↑</button>
       </form>
     </aside>
   );

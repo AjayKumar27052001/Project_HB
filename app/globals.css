@@ -379,8 +379,7 @@ input[type="checkbox"] { accent-color: var(--color-green); }
 @media (max-width: 850px) {
   .booking-frame { display: flex; flex-direction: column; align-items: stretch; padding: 22px 18px 36px; }
   .page-content { width: 100%; }
-  .assistant-backdrop { inset-block-start: 64px; }
-  .assistant-drawer { top: 64px; width: min(410px, 100vw); height: calc(100dvh - 64px); padding: 8px; }
+  .assistant-drawer { width: min(410px, 100vw); padding: 8px; }
   .header-inner { gap: 12px; }
   .main-nav { display: none; }
   .mobile-nav { position: relative; display: block; margin-left: auto; color: var(--color-green); font-size: 12px; font-weight: 700; }
@@ -405,6 +404,8 @@ input[type="checkbox"] { accent-color: var(--color-green); }
 
 @media (max-width: 600px) {
   .site-header { height: 64px; }
+  .assistant-backdrop { inset-block-start: 64px; }
+  .assistant-drawer { top: 64px; height: calc(100dvh - 64px); }
   .header-inner { padding: 0 12px; gap: 8px; }
   .wordmark { gap: 5px; font-size: 14px; }
   .wordmark-mark { width: 27px; height: 27px; font-size: 17px; }

@@ -11,6 +11,7 @@ type RatePlanDocument = {
   refundable: boolean;
   cancellationSummary: string;
   paymentSummary: string;
+  includes?: string[];
   nightlyRate: Money;
   taxPercent: string;
   feesPerNight: Money;
@@ -94,6 +95,7 @@ function mapRateOptions(room: RoomTypeDocument, criteria: RateSearchCriteria): R
       cancellationSummary: rate.cancellationSummary,
       cancellationDeadline: "",
       paymentSummary: rate.paymentSummary,
+      includes: rate.includes ?? [],
       nightlyRates: quote.nightlyRates,
       taxes: quote.taxes,
       fees: quote.fees,

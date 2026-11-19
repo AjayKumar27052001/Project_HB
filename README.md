@@ -1,6 +1,6 @@
 # Fictional Hotel Booking Assistant
 
-This repository contains a standalone fictional hotel booking experience with a page-aware, read-only Gemini assistant. The app uses Next.js App Router with React and TypeScript, synthetic hotel fixtures, and mock booking persistence in MongoDB. The assistant makes one server-side Gemini request per turn and has no booking tools.
+This repository contains a standalone fictional hotel booking experience with a page-aware assistant. The app uses Next.js App Router with React and TypeScript, synthetic hotel fixtures, and mock booking persistence in MongoDB. The current browser assistant still uses the V1/V2 single-call flow. V3-01 adds authenticated, read-only backend data APIs; they are not connected to the assistant drawer until the LangGraph service and UI integration slices are complete.
 
 ## Set up locally
 
@@ -21,18 +21,21 @@ Then set:
 - `MONGODB_URI` to a local or other **non-production** MongoDB instance.
 - `MONGODB_DATABASE` to a dedicated demo database such as `juniper_hotels_demo`.
 - `GEMINI_API_KEY` to a Google AI Studio key if you want live assistant responses. It is optional for browsing the booking screens; without it, the assistant shows setup guidance.
+- `AI_SERVICE_TOKEN` to a random value with at least 32 characters for the private V3 assistant data APIs. The same value will be configured only on the separate AI service when V3-02 is implemented.
 
 Keep both keys server-side. Never add a `NEXT_PUBLIC_` prefix, commit `.env.local`, or paste credentials into shared logs or docs. The `.env*` ignore rule excludes local environment files from Git.
 
 ## MongoDB seed
 
-Seed the synthetic properties and demo profiles before trying assistant questions or mock booking. The script loads `.env.local` and upserts the `properties` and `demoProfiles` collections, then creates indexes:
+Seed the synthetic properties and demo profiles before trying assistant questions or mock booking. The script loads `.env.local`, upserts the `properties` and `demoProfiles` collections, adds repeatable synthetic property/room/rate facts for the V3 assistant, and creates indexes:
 
 ```bash
 npm run seed:db
 ```
 
-The seed script is limited to the configured database. Use only a non-production demo database; never point it at production. The visible profile selector uses checked-in demo-profile fixtures, while booking and assistant APIs resolve the selected profile against the seeded MongoDB collection. Mock bookings are created only through the app's local API when you confirm a demo stay.
+The seed script is limited to the configured database. Use only a non-production demo database; never point it at production. Re-seeding replaces the checked-in synthetic property and demo-profile records but does not modify mock bookings. The visible profile selector uses checked-in demo-profile fixtures, while booking APIs resolve the selected profile against MongoDB. Mock bookings are created only through the app's local API when you confirm a demo stay.
+
+V3 service-authenticated assistant APIs are under `/internal/v1/assistant/*` and require `Authorization: Bearer <AI_SERVICE_TOKEN>`. They are intended for the server-side AI service, not direct browser calls. Route handlers are still network endpoints, so the token must remain server-only; production should also restrict network ingress and use managed service identity or mTLS. These APIs return synthetic data only and cannot change bookings or selections.
 
 ## Run and verify
 
@@ -63,6 +66,7 @@ npm run build
 
 ## Current documents
 
+- [Code architecture guide](docs/code-architecture.md): beginner-friendly overview of the implemented app, request flows, APIs, MongoDB collections, and what is still planned.
 - [Project skills and coding guidelines](skills.md): readable code conventions, architecture boundaries, and the rule for keeping project status current.
 - [Product requirements](docs/product-requirements.md): user problem, scope, page behaviors, requirements, and acceptance criteria.
 - [Architecture](docs/architecture.md): Next.js App Router structure, Atomic Design component hierarchy, read-only assistant flow, and data boundaries.

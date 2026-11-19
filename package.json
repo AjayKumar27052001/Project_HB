@@ -13,6 +13,9 @@
     "seed:db": "node --env-file=.env.local scripts/seed-mongodb.mjs"
   },
   "dependencies": {
+    "@google/genai": "^3.6.0",
+    "@langchain/core": "^1.4.1",
+    "@langchain/langgraph": "^1.7.5",
     "mongodb": "^7.9.0",
     "next": "^16.4.0",
     "react": "^19.3.0",

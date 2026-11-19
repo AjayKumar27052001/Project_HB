@@ -59,13 +59,33 @@ Example document:
     { "id": "POOL", "name": "Indoor pool", "category": "recreation" },
     { "id": "GYM", "name": "Fitness room", "category": "wellness" }
   ],
+  "assistantAttributes": {
+    "petPolicy": {
+      "allowed": true,
+      "fee": { "amount": "18.00", "currency": "USD", "basis": "per pet per night" }
+    },
+    "parking": {
+      "available": true,
+      "type": "Self parking",
+      "fee": { "amount": "12.00", "currency": "USD", "basis": "per night" }
+    },
+    "internet": { "wifi": { "available": true, "complimentary": true } },
+    "fitnessCenter": { "available": true },
+    "pool": { "available": true }
+  },
+  "policies": {
+    "checkIn": "3:00 PM",
+    "checkOut": "11:00 AM",
+    "cancellation": "Cancellation terms vary by rate; review the selected rate for its terms."
+  },
   "services": [
     {
-      "id": "SPA",
-      "name": "Sample Spa",
-      "description": "A fictional spa service.",
+      "id": "SPA-MASSAGE-60",
+      "name": "60-minute massage",
+      "description": "A fictional spa treatment.",
       "openingHours": "09:00-20:00",
-      "price": { "amount": "45.00", "currency": "USD" }
+      "price": { "amount": "85.00", "currency": "USD", "basis": "per 60-minute massage" },
+      "assistantAttributes": { "type": "spaTreatment", "available": true }
     }
   ],
   "roomTypes": [
@@ -76,6 +96,12 @@ Example document:
       "maxAdults": 2,
       "maxChildren": 1,
       "bedSummary": "1 king bed",
+      "assistantAttributes": {
+        "accessible": true,
+        "accessibleFeatures": ["Step-free entry", "Wheelchair-accessible bathroom"],
+        "rollawayBed": true,
+        "crib": true
+      },
       "ratePlans": [
         {
           "id": "RATE-FLEX",
@@ -83,6 +109,7 @@ Example document:
           "refundable": true,
           "cancellationSummary": "Free cancellation until 6 PM two days before arrival.",
           "paymentSummary": "Pay at the property.",
+          "includes": ["Breakfast"],
           "nightlyRate": { "amount": "209.00", "currency": "USD" },
           "taxPercent": "10",
           "feesPerNight": { "amount": "5.00", "currency": "USD" },
@@ -107,7 +134,7 @@ Example document:
 }
 ```
 
-`demoAvailableRooms` is static mock availability, not date-specific inventory. The Rates API calculates a quote from the guest's dates, room count, nightly rate, tax percentage, and per-night fee. The booking endpoint re-reads MongoDB and uses the same calculation before saving a price snapshot. Label availability and prices as synthetic; do not present them as live or guaranteed.
+`demoAvailableRooms` is static mock availability, not date-specific inventory. The Rates API calculates a quote from the guest's dates, room count, nightly rate, tax percentage, and per-night fee. The booking endpoint re-reads MongoDB and uses the same calculation before saving a price snapshot. V3 Search uses that same quote calculator and only ranks rates that fit the active stay and room criteria. Current seed prices use USD. If future data includes multiple currencies, assistant results group by currency and report the comparison as incomplete; do not claim a global lowest amount without an approved currency conversion source. Label availability and prices as synthetic; do not present them as live or guaranteed.
 
 ### Property validation rules
 
@@ -116,6 +143,10 @@ Example document:
 - Nested IDs (`amenities.id`, `services.id`, `roomTypes.id`, `ratePlans.id`) are unique within their parent document.
 - Prices are stored as decimal strings in JSON and converted to a decimal-safe type in Node.js. Avoid JavaScript floating-point arithmetic for money.
 - `taxPercent` is stored as a decimal string so the backend can calculate totals with integer minor units rather than binary floating-point money arithmetic.
+- Assistant facts use stable keys and explicit scopes in `assistantAttributes` and `policies`; room facts stay inside a room type and rate facts stay inside a rate plan. Missing facts remain unknown rather than false or zero.
+- The backend attribute registry maps supported guest wording to these structured fields. Adding an attribute requires structured values and one registry definition, not a feature-specific branch in the LangGraph coordinator.
+- The same registry can describe nested service facts such as `services[].price` with service scope. Generic assistant APIs query those catalog keys using the same request/response envelope; adding a service fact does not require a spa-specific API. Keep service IDs, amounts, currencies, and price bases explicit.
+- The repeatable seed adds deterministic synthetic assistant attributes across the 83 demo properties. Re-running it refreshes only `properties` and `demoProfiles`; it does not modify mock `bookings`.
 - Keep embedded arrays bounded and curated. If a property's inventory/history grows substantially, move those records to a separate collection.
 
 ## 5. `bookings` document
@@ -198,6 +229,9 @@ Create indexes during seed/bootstrap:
 db.properties.createIndex({ slug: 1 }, { unique: true });
 db.properties.createIndex({ "destination.cityNormalized": 1, active: 1 });
 db.properties.createIndex({ "amenities.id": 1, active: 1 });
+db.properties.createIndex({ "destination.cityNormalized": 1, "assistantAttributes.petPolicy.allowed": 1, active: 1 });
+db.properties.createIndex({ "destination.cityNormalized": 1, "assistantAttributes.petPolicy.fee.amount": 1, active: 1 });
+db.properties.createIndex({ "destination.cityNormalized": 1, "roomTypes.assistantAttributes.accessible": 1, active: 1 });
 db.demoProfiles.createIndex({ email: 1 }, { unique: true });
 db.bookings.createIndex({ confirmationCode: 1 }, { unique: true });
 db.bookings.createIndex({ idempotencyKey: 1 }, { unique: true });

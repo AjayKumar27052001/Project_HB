@@ -6,8 +6,8 @@ import { AssistantDrawerProvider } from "@/features/assistant/assistant-drawer-c
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Juniper Hotels | Find your stay",
-  description: "Explore a fictional hotel booking experience with Juniper Concierge.",
+  title: "dreRuss Hotels | Find your stay",
+  description: "Explore a fictional hotel booking experience with dreRuss Concierge.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </AssistantDrawerProvider>
         </ProfileProvider>
         <footer className="site-footer">
-          <span>Juniper Hotels · Fictional booking experience</span>
+          <span>dreRuss Hotels · Fictional booking experience</span>
           <span>Demo data only · No real reservation or payment</span>
         </footer>
       </body>

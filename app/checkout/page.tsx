@@ -71,19 +71,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Sea
 
   const ratesQuery = new URLSearchParams({ destination, checkIn, checkOut, adults: String(adults), rooms: String(rooms) });
   const assistantContext = JSON.stringify({
-    propertyName: property.name,
-    roomName: room.name,
-    rateName: rate.name,
-    checkIn,
-    checkOut,
-    adults,
-    rooms,
-    subtotal: formatMoney(rate.subtotal),
-    taxesAndFees: formatMoney(rate.taxesAndFees),
-    total: formatMoney(rate.total),
-    cancellationSummary: rate.cancellationSummary,
-    paymentSummary: rate.paymentSummary,
-    demoBoundary: "This is a fictional demo. No payment details are collected, no real reservation is created, and no payment is submitted.",
+    propertyId,
+    roomId,
+    rateId,
+    searchCriteria: { destination, checkIn, checkOut, adults, rooms },
   });
 
   return (

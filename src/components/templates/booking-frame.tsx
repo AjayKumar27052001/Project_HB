@@ -32,7 +32,7 @@ export function BookingFrame({ children }: { children: ReactNode }) {
         <button
           className="assistant-backdrop"
           type="button"
-          aria-label="Close Juniper Concierge"
+          aria-label="Close dreRuss Concierge"
           tabIndex={isOpen ? 0 : -1}
           onClick={closeDrawer}
           hidden={!isOpen}

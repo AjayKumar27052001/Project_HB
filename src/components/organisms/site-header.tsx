@@ -17,9 +17,9 @@ export function SiteHeader() {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link className="wordmark" href="/" aria-label="Juniper Hotels home">
-          <span className="wordmark-mark" aria-hidden="true">J</span>
-          <span>Juniper <em>Hotels</em></span>
+        <Link className="wordmark" href="/" aria-label="dreRuss Hotels home">
+          <span className="wordmark-mark" aria-hidden="true">D</span>
+          <span>dreRuss <em>Hotels</em></span>
         </Link>
         <nav className="main-nav" aria-label="Main navigation">
           <Link href="/">Find a stay</Link>

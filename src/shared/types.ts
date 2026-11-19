@@ -55,6 +55,7 @@ export type RateOption = {
   cancellationSummary: string;
   cancellationDeadline: string;
   paymentSummary: string;
+  includes?: string[];
   badge?: string;
   nightlyRates?: Array<{ date: string; amount: string; currency: string }>;
   taxes?: Money;

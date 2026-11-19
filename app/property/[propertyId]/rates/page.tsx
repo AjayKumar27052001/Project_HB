@@ -20,14 +20,17 @@ export default async function RatesPage({
   const adults = Number(getSafeSearchValue(query.adults, String(defaults.adults))) || 1;
   const rooms = Number(getSafeSearchValue(query.rooms, String(defaults.rooms))) || 1;
 
+  const searchCriteria = { destination, checkIn, checkOut, adults, rooms };
   return (
-    <PropertyRatesPanel
+    <div data-assistant-context={JSON.stringify({ propertyId, searchCriteria })}>
+      <PropertyRatesPanel
       propertyId={propertyId}
       destination={destination}
       checkIn={checkIn}
       checkOut={checkOut}
       adults={adults}
       rooms={rooms}
-    />
+      />
+    </div>
   );
 }

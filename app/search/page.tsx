@@ -17,7 +17,7 @@ export default async function SearchResultsPage({ searchParams }: { searchParams
     rooms: Number(getSafeSearchValue(params.rooms, String(defaults.rooms))) || 1,
   };
   return (
-    <div className="page-stack">
+    <div className="page-stack" data-assistant-context={JSON.stringify({ searchCriteria: criteria })}>
       <section className="search-summary">
         <div>
           <span className="eyebrow">YOUR SEARCH</span>
