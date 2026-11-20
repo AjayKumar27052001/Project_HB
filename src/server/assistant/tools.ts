@@ -5,7 +5,7 @@ import type { AssistantTurnRequest, CapabilityName, Plan } from "./types";
 import type { SearchCriteria } from "@/shared/types";
 
 /**
- * Capability Registry with Schema Awareness
+ * Capability Registry with Schema Awareness (V4.0)
  * Contains the purpose, allowed page scope, input parameter schema,
  * and the exact return structure for each tool.
  */
@@ -48,7 +48,7 @@ export const CAPABILITY_REGISTRY: Record<
   getPropertyDetails: {
     name: "getPropertyDetails",
     description: "Fetch comprehensive hotel facts, amenities, check-in/out policies, and cancellation policy specifics.",
-    allowedPages: ["search-results", "rate-list"],
+    allowedPages: ["search-results", "rate-list", "confirmation"],
     parameters: {
       propertyId: "string (ID of the property)",
       attributes: "Array of string attribute keys (e.g. ['property.amenities', 'policies.cancellation', 'policies.checkIn'])",
@@ -94,6 +94,48 @@ export const CAPABILITY_REGISTRY: Record<
       rate: "{ id, name, refundable }",
       price: "{ subtotal, taxesAndFees, total, currency, nights }",
       policies: "{ cancellationSummary, paymentSummary }",
+    },
+  },
+
+  getGuestProfile: {
+    name: "getGuestProfile",
+    description: "Fetch authenticated guest loyalty details, tier (Silver/Gold/Platinum), points balance, available free upgrade awards, and personal preferences.",
+    allowedPages: ["home", "search-results", "rate-list", "checkout", "confirmation"],
+    parameters: {
+      profileId: "string (ID of the guest, e.g. PROFILE-ALEX)",
+    },
+    returnsStructure: {
+      displayName: "string",
+      rewards: "{ tier, pointsBalance, upgradeAwardsAvailable, pointsValueInRupees, nextTier }",
+      preferences: "Array of string preferences (e.g. ['quiet room', 'late checkout'])",
+    },
+  },
+
+  queryLoyaltyPolicy: {
+    name: "queryLoyaltyPolicy",
+    description: "RAG tool to query verified rules and policies for loyalty tiers, point earnings/redemption, upgrade rules, and non-stacking terms.",
+    allowedPages: ["home", "search-results", "rate-list", "checkout", "confirmation"],
+    parameters: {
+      topic: "string ('tiers' | 'points' | 'upgrades')",
+    },
+    returnsStructure: {
+      topic: "string",
+      policyContent: "Exact policy text chunk covering qualification, benefits, point values, or rules",
+    },
+  },
+
+  getUpsellOffers: {
+    name: "getUpsellOffers",
+    description: "Fetch verified post-booking upselling packages, room upgrades, and dining/transportation add-ons strictly on the Confirmation page.",
+    allowedPages: ["confirmation"],
+    parameters: {
+      propertyId: "string (confirmed hotel ID)",
+      tier: "string (optional guest tier: 'silver' | 'gold' | 'platinum')",
+    },
+    returnsStructure: {
+      propertyId: "string",
+      guestTier: "string",
+      offers: "Array of { id, type, title, description, price: { amount, currency, basis }, perkBadge }",
     },
   },
 };
@@ -193,13 +235,52 @@ export function validatePlan(plan: Plan, request: AssistantTurnRequest): Plan {
     };
   }
 
+  if (plan.capability === "getGuestProfile") {
+    const profileId =
+      (typeof plan.arguments.profileId === "string" && plan.arguments.profileId) ||
+      request.profileId ||
+      request.pageContext.profileId;
+    if (!profileId) {
+      throw new Error("A profileId is required to fetch guest loyalty profile.");
+    }
+    return {
+      ...plan,
+      arguments: {
+        profileId,
+      },
+    };
+  }
+
+  if (plan.capability === "queryLoyaltyPolicy") {
+    const topic = typeof plan.arguments.topic === "string" ? plan.arguments.topic : "tiers";
+    return {
+      ...plan,
+      arguments: {
+        topic,
+      },
+    };
+  }
+
+  if (plan.capability === "getUpsellOffers") {
+    const propertyId = request.pageContext.propertyId || plan.arguments.propertyId;
+    if (!propertyId || typeof propertyId !== "string") {
+      throw new Error("A propertyId is required to fetch post-booking upselling offers.");
+    }
+    return {
+      ...plan,
+      arguments: {
+        propertyId,
+        tier: typeof plan.arguments.tier === "string" ? plan.arguments.tier : "silver",
+      },
+    };
+  }
+
   return plan;
 }
 
 /**
- * Decoupled Tool Execution (V3.5)
- * Calls internal REST APIs instead of importing backend repositories directly.
- * Allows effortless swap to Java or remote backend by changing INTERNAL_API_BASE_URL.
+ * Decoupled Tool Execution (V4.0)
+ * All calls are dispatched to decoupled REST APIs.
  */
 export async function executeCapability(plan: Plan, request: AssistantTurnRequest): Promise<unknown> {
   const { capability, arguments: args } = plan;
@@ -330,6 +411,52 @@ export async function executeCapability(plan: Plan, request: AssistantTurnReques
         }
         throw error;
       }
+    }
+
+    case "getGuestProfile": {
+      const profileId = String(args.profileId);
+      try {
+        const response = await callInternalApiGet(
+          `/internal/v1/assistant/profiles/${encodeURIComponent(profileId)}`,
+        );
+        return {
+          status: response.status ?? "complete",
+          data: response.data,
+        };
+      } catch (error: unknown) {
+        const err = error as { status?: number; code?: string };
+        if (err?.status === 404 || err?.code === "NOT_FOUND") {
+          return {
+            status: "not_found",
+            data: { error: `Profile ${profileId} not found` },
+          };
+        }
+        throw error;
+      }
+    }
+
+    case "queryLoyaltyPolicy": {
+      const topic = String(args.topic ?? "tiers");
+      const response = await callInternalApiPost("/internal/v1/assistant/loyalty/policy", {
+        topic,
+      });
+      return {
+        status: response.status ?? "complete",
+        data: response.data,
+      };
+    }
+
+    case "getUpsellOffers": {
+      const propertyId = String(args.propertyId);
+      const tier = String(args.tier ?? "silver");
+      const response = await callInternalApiPost("/internal/v1/assistant/upsell-offers", {
+        propertyId,
+        tier,
+      });
+      return {
+        status: response.status ?? "complete",
+        data: response.data,
+      };
     }
 
     default:

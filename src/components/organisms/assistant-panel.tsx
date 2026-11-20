@@ -12,6 +12,7 @@ type ConversationMessage = { role: "user" | "assistant"; text: string };
 type AssistantApiError = Error & { retryable: boolean };
 type AssistantTurnRequest = {
   pageSessionId: string;
+  profileId?: string;
   page: AssistantPage;
   history: ConversationMessage[];
   message?: string;
@@ -25,8 +26,12 @@ type ApiReplyResponse = { answer?: { text?: string } };
 
 const pageCopy: Record<AssistantPage, { welcome: string; prompts: string[] }> = {
   home: {
-    welcome: "Hi, I’m dreRuss Concierge. I can explain the search options on this page.",
-    prompts: ["What dates should I enter?", "How many guests can I add?", "What can I ask you?"],
+    welcome: "Welcome to Juniper Hotels! I can help you explore our loyalty tiers, member offers, and exclusive rewards.",
+    prompts: [
+      "What are the benefits of becoming a member?",
+      "Compare Silver, Gold, and Platinum tiers",
+      "What perks do I get with my account?",
+    ],
   },
   "search-results": {
     welcome: "I can compare the hotels shown here and explain their listed amenities.",
@@ -41,8 +46,12 @@ const pageCopy: Record<AssistantPage, { welcome: string; prompts: string[] }> = 
     prompts: ["What is the cancellation deadline?", "How are taxes and fees shown?", "Is this a real booking?"],
   },
   confirmation: {
-    welcome: "The V3 concierge is available on Home, Search, Rates, and Checkout. Confirmation assistance is planned for a later release.",
-    prompts: [],
+    welcome: "Congratulations on your booking! I can help you with room upgrades, celebration packages, and loyalty perks for this stay.",
+    prompts: [
+      "What upgrades or celebration packages are available?",
+      "Can I apply an Upgrade Award for this stay?",
+      "What are my loyalty benefits for this booking?",
+    ],
   },
 };
 
@@ -94,11 +103,23 @@ function buildCurrentPageContext(page: AssistantPage): Record<string, unknown> {
   return { limitation: "The current page does not expose stay details to the assistant." };
 }
 
-function createPageSessionId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
+function getOrCreateSessionId(profileId: string): string {
+  if (typeof window === "undefined") return "page-init";
+  const storageKey = `assistant_session_${profileId || "guest"}`;
+  const timestampKey = `${storageKey}_time`;
+  const now = Date.now();
+  const lastTime = Number(window.sessionStorage.getItem(timestampKey) || "0");
+  const existing = window.sessionStorage.getItem(storageKey);
+
+  if (existing && now - lastTime < 30 * 60 * 1000) {
+    window.sessionStorage.setItem(timestampKey, String(now));
+    return existing;
   }
-  return `page-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const generated = `sess_${typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now()}`;
+  window.sessionStorage.setItem(storageKey, generated);
+  window.sessionStorage.setItem(timestampKey, String(now));
+  return generated;
 }
 
 function renderFacts(value: unknown): string[] {
@@ -167,9 +188,6 @@ function EvidenceDetails({ evidence }: { evidence: unknown }) {
 }
 
 async function requestGeminiReply(request: AssistantTurnRequest): Promise<AssistantReply> {
-  if (request.page === "confirmation") {
-    throw Object.assign(new Error("The V3 concierge is available on Home, Search, Rates, and Checkout."), { retryable: false });
-  }
   const response = await fetch("/api/v3/assistant/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -211,7 +229,7 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
 
   useEffect(() => {
     activeRequestId.current += 1;
-    pageSessionId.current = createPageSessionId();
+    pageSessionId.current = getOrCreateSessionId(selectedProfile.id);
     retryHistory.current = [];
     setMessages([]);
     setQuestion("");
@@ -233,13 +251,19 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
     setStatus("loading");
 
     try {
-      if (!pageSessionId.current) pageSessionId.current = createPageSessionId();
+      const isGuest = selectedProfile.id === "GUEST";
+      const profileIdToSend = isGuest ? undefined : selectedProfile.id;
+      if (!pageSessionId.current) pageSessionId.current = getOrCreateSessionId(selectedProfile.id);
       const reply = await replyProvider({
         pageSessionId: pageSessionId.current,
+        profileId: profileIdToSend,
         page,
         history: previousMessages.slice(-12),
         ...(continuationCursor ? { continuationCursor } : { message: text }),
-        pageContext: buildCurrentPageContext(page),
+        pageContext: {
+          ...buildCurrentPageContext(page),
+          profileId: profileIdToSend,
+        },
       });
 
       if (activeRequestId.current !== requestId) return;
@@ -290,7 +314,6 @@ export function AssistantPanel({ replyProvider = requestGeminiReply }: { replyPr
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`}>
             <p className={`chat-message chat-${message.role}`}>{message.text}</p>
-            {message.role === "concierge" && message.evidence ? <EvidenceDetails evidence={message.evidence} /> : null}
           </div>
         ))}
         {status === "loading" ? <p className="assistant-loading" role="status">dreRuss Concierge is thinking…</p> : null}

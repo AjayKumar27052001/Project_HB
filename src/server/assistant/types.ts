@@ -8,7 +8,10 @@ export type CapabilityName =
   | "searchProperties"
   | "getPropertyDetails"
   | "getRoomRates"
-  | "getCheckoutSummary";
+  | "getCheckoutSummary"
+  | "getGuestProfile"
+  | "queryLoyaltyPolicy"
+  | "getUpsellOffers";
 
 export interface Plan {
   capability: CapabilityName;
@@ -18,6 +21,7 @@ export interface Plan {
 
 export interface AssistantTurnRequest {
   pageSessionId: string;
+  profileId?: string | null;
   page: AssistantPage;
   message?: string;
   history?: Array<{ role: "user" | "assistant"; text: string }>;
@@ -27,6 +31,8 @@ export interface AssistantTurnRequest {
     propertyId?: string;
     roomId?: string;
     rateId?: string;
+    confirmationCode?: string;
+    profileId?: string;
     searchCriteria?: SearchCriteria;
     visibleSearchFields?: string[];
     searchLimits?: Record<string, unknown>;
@@ -75,4 +81,8 @@ export const GraphState = Annotation.Root({
   error: Annotation<string | null>({ reducer: (_, val) => val, default: () => null }),
   retrievalRound: Annotation<number>({ reducer: (_, val) => val, default: () => 0 }),
   missingPolicyFor: Annotation<string[] | null>({ reducer: (_, val) => val, default: () => null }),
+  isOutOfScope: Annotation<boolean>({ reducer: (_, val) => val, default: () => false }),
+  focusedPropertyId: Annotation<string | null>({ reducer: (_, val) => val, default: () => null }),
+  focusedPropertyName: Annotation<string | null>({ reducer: (_, val) => val, default: () => null }),
+  navigationAction: Annotation<string | null>({ reducer: (_, val) => val, default: () => null }),
 });

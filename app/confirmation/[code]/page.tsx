@@ -28,6 +28,8 @@ export default async function ConfirmationPage({ params }: { params: PageParams 
 
   const imageClass = booking.property.imageClass ?? "photo-canal";
   const assistantContext = JSON.stringify({
+    confirmationCode: booking.confirmationCode,
+    propertyId: booking.property.id,
     propertyName: booking.property.name,
     roomName: booking.selection.roomName,
     rateName: booking.selection.rateName,
